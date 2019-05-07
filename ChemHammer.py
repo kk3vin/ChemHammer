@@ -41,7 +41,7 @@ class ChemHammer():
         except FileNotFoundError as e:
             print(f"File failed to load due to {e}")
             print("Attempting to download from the web, please allow firewall access")
-            url = 'https://raw.githubusercontent.com/Bowserinator/Periodic-Table-JSON/master/PeriodicTableJSON.json'
+            url = 'https://raw.githubusercontent.com/SurgeArrester/ChemHammer/master/Periodic-Table-JSON.json'
             response = urllib.request.urlopen(url)
             data = response.read()      # a `bytes` object
             data = data.decode('utf-8')
