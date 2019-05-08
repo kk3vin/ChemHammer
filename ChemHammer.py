@@ -6,14 +6,16 @@ Python Parser Source: https://github.com/Zapaan/python-chemical-formula-parser
 Periodic table JSON data: https://github.com/Bowserinator/Periodic-Table-JSON
 All additional work: Cameron Hargreaves
 
-TODO: Remove duplicates in the pairwise distances matrix
-TODO: Refine the hamming distance metric
+TODO: Refine the hamming distance metric and levenshtein distance metric
+
 """
 
 import re
 import json
 import os
 import sys
+import warnings
+
 import urllib.request
 
 from copy import deepcopy
@@ -24,12 +26,27 @@ import numpy as np
 from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import linear_sum_assignment
 
+def main():
+    test_str = "Sc (Al O3) Cd"
+
+    x = ChemHammer("Ca (Ti O3)")
+
+    print(f"Composition is {x.composition}")
+    print(f"Normalised Composition is {x.normed_composition}")
+    print(f"Euclidean Distance is {x.euclidean_dist(test_str)}")
+    print(f"Hamming Distance is {x.hamming_dist(test_str)[0]}")
+    print(f"Levenshtein Distance is {x.levenshtein_dist((test_str))}")
 
 class ChemHammer():
     ATOM_REGEX = '([A-Z][a-z]*)(\d*)'
     OPENERS = '({['
     CLOSERS = ')}]'
 
+    # How much the change in element position affects the distance metric
+    DIST_MOD = 0.5
+
+    # How much the addition of a new element affects the distance metric
+    LEVENSH_MOD = 1.3
 
     def __init__(self, formula):
         self.formula = formula
@@ -219,7 +236,7 @@ class ChemHammer():
         for element in list(comp1.keys()):
             if element in comp2:
                 # Remove from both lists if we have a shared element and update with distance 0
-                pairing_dict[element] = {element: 0}
+                pairing_dict[element] = [element, 0]
                 comp1.pop(element)
                 comp2.pop(element)
 
@@ -242,12 +259,12 @@ class ChemHammer():
         row_ind, col_ind = linear_sum_assignment(dist_cost)
 
         for i, _ in enumerate(row_ind):
-            pairing_dict[comp1_elements[row_ind[i]]] = {comp2_elements[col_ind[i]] : dist_cost[row_ind[i]][col_ind[i]]}
+            pairing_dict[comp1_elements[row_ind[i]]] = [comp2_elements[col_ind[i]], dist_cost[row_ind[i]][col_ind[i]]]
 
         return pairing_dict
 
 
-    def hamming_dist(self, comp2, comp1 = None):
+    def hamming_dist(self, comp2, comp1=None, base_call_flag=True):
         """
         This is similar to euclidean distance, however adds a further distance
         metric depending on manhattan distance between closest neighbours
@@ -258,47 +275,46 @@ class ChemHammer():
             comp2 = self.parse_formula(comp2)
             comp2 = self.normalise_composition(comp2)
 
-        if len(comp1) != len(comp2):
-            print("Must have equal numbers of elements for Hamming distance, use levenshtein distance")
-            return None
+        if len(comp1) != len(comp2) and base_call_flag:
+            warnings.warn("Must have equal numbers of unique elements for Hamming distance, use levenshtein distance")
 
-        dist = 0
-
+        # Pair up each of the atoms so that the overall distances are minimised
         comp1_pos = self.return_positions(comp1)
         comp2_pos = self.return_positions(comp2)
-
         pairwise_matches = self.pairwise_dist(comp1_pos, comp2_pos)
 
+        dist = 0
         # Loop through the union of  keys
         for key, value in pairwise_matches.items():
-            dist += abs(comp1[key] - comp2[value[0]]) + value[1]
+            dist += abs(comp1[key] - comp2[value[0]]) + value[1] * self.DIST_MOD
 
-        return dist
+        return dist, pairwise_matches
 
     def levenshtein_dist(self, comp2, comp1 = None):
+        """
+        Similar methodology to Hamming distance except we match the values from
+        the root composition to the test compostion and then add the weights of
+        the leftover elements to the distance metric
+        """
         comp1 = comp1 if comp1 is not None else self.normed_composition
 
         if isinstance(comp2, str):
             comp2 = self.parse_formula(comp2)
             comp2 = self.normalise_composition(comp2)
 
-        dist = 0
+        # Calculate the hamming dist first
+        dist, pairwise_matches = self.hamming_dist(comp2, base_call_flag=False)
 
-        comp1_pos = self.return_positions(comp1)
-        comp2_pos = self.return_positions(comp2)
+        # Now mop up the remaining elements that weren't mapped to one another
+        for element, distribution in comp1.items():
+            if element not in pairwise_matches:
+                dist += distribution * self.LEVENSH_MOD
 
-        # Find the closest matching letters for the first composition
-        pairwise_matches = self.pairwise_dist(comp1_pos, comp2_pos)
+        for element, distribution in comp2.items():
+            if element not in pairwise_matches:
+                dist += distribution * self.LEVENSH_MOD
 
-
+        return dist
 
 if __name__ == "__main__":
-    # For personal use as cba configuring environments in vscode
-    os.chdir('/home/cameron/Dropbox/University/PhD/ChemHammer')
-
-    x = ChemHammer("Li4(CO)6Rb")
-    print(x.composition)
-    print(x.normed_composition)
-    print(x.euclidean_dist("Li4(C6O6)"))
-    print(x.hamming_dist("K6(C6O6)Sr"))
-    print()
+    main()
