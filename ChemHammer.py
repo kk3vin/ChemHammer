@@ -20,7 +20,10 @@ from copy import deepcopy
 from collections import Counter
 
 import numpy as np
+
 from scipy.spatial.distance import pdist, squareform
+from scipy.optimize import linear_sum_assignment
+
 
 class ChemHammer():
     ATOM_REGEX = '([A-Z][a-z]*)(\d*)'
@@ -203,86 +206,45 @@ class ChemHammer():
     def pairwise_dist(self, comp1_orig, comp2_orig):
         """
         Return matched pairs of closest elements
-        TODO: Improve time complexity of algorithm
+        TODO: Refactor the code to use a simpler datastructure than dictionarys
+        of dictionarys
         """
         # Make copies of these to avoid changing original
         comp1 = deepcopy(comp1_orig)
         comp2 = deepcopy(comp2_orig)
 
         pairing_dict = {}
-        full_element_list = [x['symbol'] for x in self.periodic_tab['elements']]
 
         # Check every element in the table, add to pair and pop from both lists if theres an exact match
-        for element in full_element_list:
-            if element in comp1 and element in comp2:
+        for element in list(comp1.keys()):
+            if element in comp2:
                 # Remove from both lists if we have a shared element and update with distance 0
                 pairing_dict[element] = {element: 0}
                 comp1.pop(element)
                 comp2.pop(element)
 
-        # This next bit gets complicated sorry, but keep iterating until we have
-        # matched all values in comp1
-        while(len(comp1) > 0):
-            checked_list = []
-            # Next create a distance matrix for the remaining elements and pair these up
-            remaining_elements = list(comp1.keys()) + list(comp2.keys())
-            coords = list(map(self.position, remaining_elements))
-            dist_matrix = np.array(squareform(pdist(coords, metric="cityblock")))
+        # List the elements we're using for use in a square matrix, craete
+        # a list of the coordinates of these on the periodic table, and make
+        # a square distance matrix
+        comp1_elements = list(comp1.keys())
+        comp2_elements = list(comp2.keys())
+        elements = comp1_elements + comp2_elements
 
-            # As we only want to match those from opposing compositions we will
-            # look only at the top right quadrant only
-            dist_values = dist_matrix[:len(comp1),len(comp1):]
+        coords = list(map(self.position, elements))
+        dist_matrix = np.array(squareform(pdist(coords, metric="cityblock")))
 
-            # TODO FINISH THIS SECTION. Is this a minimisation problem? I think it is...
-            # Now we want the unique combination of these elements that gives
-            # the minimised distance sum
-            sums = []
-            for i in range(dist_values.shape[0]):
-                for j in range(i, dist_values.shape[1]):
-                    print()
+        # As we only want to match those from opposing compositions we will
+        # look at the top right quadrant only
+        dist_cost = dist_matrix[:len(comp1), len(comp1):]
 
+        # Use the minimum weight matching algorithm for bipartite graphs to find
+        # the best combination of these
+        row_ind, col_ind = linear_sum_assignment(dist_cost)
 
-
-
-
-
-
-
-
-
-
-
-
-
-            # We wish to match the closest elements first
-            min_val = np.min(dist_matrix[np.nonzero(dist_matrix)])
-            min_val_coords = np.nonzero(dist_matrix == min_val)
-
-            # Take the distance matrix and find only those in the top right
-            # quadrant so we don't pair elements within the same composition
-            min_val_coords = np.array(list(zip(min_val_coords[0], min_val_coords[1])))
-            min_val_coords = [x for x in min_val_coords if x[0] < len(comp1) and x[1] >= len(comp1)]
-
-            # If there is a non-unique solution we wish to use the one that will
-            # lead to the smallest global solution
-            if len(min_val_coords) > 1:
-
-                print()
-
-            # Take the first point from this list and assign the associated elements
-            # THIS IS WRONG, this gets sometimes awful result. Time to go for minimisation
-            coord = min_val_coords[0]
-            element_1 = remaining_elements[coord[0]]
-            element_2 = remaining_elements[coord[1]]
-
-
-
-            pairing_dict[element_1] = {element_2: dist_matrix[coord[0]][coord[1]]}
-            comp1.pop(element_1)
-            comp2.pop(element_2)
+        for i, _ in enumerate(row_ind):
+            pairing_dict[comp1_elements[row_ind[i]]] = {comp2_elements[col_ind[i]] : dist_cost[row_ind[i]][col_ind[i]]}
 
         return pairing_dict
-
 
 
     def hamming_dist(self, comp2, comp1 = None):
@@ -306,6 +268,7 @@ class ChemHammer():
         comp2_pos = self.return_positions(comp2)
 
         pairwise_matches = self.pairwise_dist(comp1_pos, comp2_pos)
+
         # Loop through the union of  keys
         for key, value in pairwise_matches.items():
             dist += abs(comp1[key] - comp2[value[0]]) + value[1]
