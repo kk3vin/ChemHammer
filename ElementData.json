@@ -1,4 +1,5 @@
 {
+    "_comment": "Originally taken from https://github.com/Bowserinator/Periodic-Table-JSON with additional Pettifor numbers added from https://iopscience.iop.org/article/10.1088/1367-2630/18/9/093011",
     "elements": [
         {
             "name": "Hydrogen",
