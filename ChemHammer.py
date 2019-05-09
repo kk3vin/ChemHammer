@@ -63,126 +63,6 @@ class ChemHammer():
         self.normed_composition = self._normalise_composition(self.composition)
         self.distance_metric = metric
 
-    def _get_periodic_tab(self):
-        """
-        Attempt to load periodic data from the same folder, else download
-        it from the web
-        """
-        try:
-            with open('ElementData.json') as json_data:
-                periodic_data = json.load(json_data)
-            return periodic_data
-
-        except FileNotFoundError as e:
-            print(f"ELement lookup table failed to load due to {e}")
-            print("Attempting to download from the web, please allow firewall access")
-            url = 'https://raw.githubusercontent.com/SurgeArrester/ChemHammer/master/ElementData.json'
-            response = urllib.request.urlopen(url)
-            data = response.read()      # a `bytes` object
-            data = data.decode('utf-8')
-            periodic_data = json.loads(data)
-            return periodic_data
-
-        except Exception as e:
-            print(f"Failed due to {e}")
-
-
-    def _is_balanced(self, formula):
-        """Check if all sort of brackets come in pairs."""
-        # Very naive check, just here because you always need some input checking
-        c = Counter(formula)
-        return c['['] == c[']'] and c['{'] == c['}'] and c['('] == c[')']
-
-
-    def _dictify(self, tuples):
-        """Transform tuples of tuples to a dict of atoms."""
-        res = dict()
-        for atom, n in tuples:
-            try:
-                res[atom] += int(n or 1)
-            except KeyError:
-                res[atom] = int(n or 1)
-        return res
-
-
-    def _fuse(self, mol1, mol2, w=1):
-        """
-        Fuse 2 dicts representing molecules. Return a new dict.
-        """
-        return {atom: (mol1.get(atom, 0) + mol2.get(atom, 0)) * w for atom in set(mol1) | set(mol2)}
-
-
-    def _parse(self, formula):
-        """
-        Return the molecule dict and length of parsed part.
-        Recurse on opening brackets to parse the subpart and
-        return on closing ones because it is the end of said subpart.
-        """
-        q = []
-        mol = {}
-        i = 0
-
-        while i < len(formula):
-            # Using a classic loop allow for manipulating the cursor
-            token = formula[i]
-
-            if token in self.CLOSERS:
-                # Check for an index for this part
-                m = re.match('\d+', formula[i+1:])
-                if m:
-                    weight = int(m.group(0))
-                    i += len(m.group(0))
-                else:
-                    weight = 1
-
-                submol = self._dictify(re.findall(self.ATOM_REGEX, ''.join(q)))
-                return self._fuse(mol, submol, weight), i
-
-            elif token in self.OPENERS:
-                submol, l = self._parse(formula[i+1:])
-                mol = self._fuse(mol, submol)
-                # skip the already read submol
-                i += l + 1
-            else:
-                q.append(token)
-
-            i+=1
-
-        # Fuse in all that's left at base level
-        return self._fuse(mol, self._dictify(re.findall(self.ATOM_REGEX, ''.join(q)))), i
-
-
-    def _parse_formula(self, formula):
-        """Parse the formula and return a dict with occurences of each atom."""
-        if not self._is_balanced(formula):
-            raise ValueError("Your brackets not matching in pairs ![{]$[&?)]}!]")
-
-        return self._parse(formula)[0]
-
-    def _normalise_composition(self, composition):
-        """
-        Sum up the numbers in our counter to get total atom count
-        """
-        composition = deepcopy(composition)
-        # check it has been processed
-        if isinstance(composition, str):
-            composition = self._parse_formula(composition)
-
-        atom_count =  sum(composition.values(), 0.0)
-
-        for atom in composition:
-            composition[atom] /= atom_count
-
-        return composition
-
-    def _get_atomic_num(self, element_string):
-        """
-        Return atomic number from element string
-        """
-        for i, element in enumerate(self.periodic_tab['elements']):
-            if element['symbol'] == element_string:
-                return i
-
     def euclidean_dist(self, comp2, comp1 = None):
         """
         Simply take the euclidean distance between two vectors excluding atom
@@ -203,7 +83,7 @@ class ChemHammer():
             if key in comp1 and key in comp2:
                 dist += (comp1[key] - comp2[key]) ** 2
 
-            #If its' not a shared element try and take distance from each dict
+            # If its' not a shared element try and take distance from each dict
             elif key in comp1:
                 dist += comp1[key] ** 2
 
@@ -214,79 +94,6 @@ class ChemHammer():
                 print("Key not in either, strange bug occurred")
 
         return sqrt(dist)
-
-    def _get_position(self, element, metric=None):
-        """
-        Return either the x, y coordinate of an elements position, or the
-        x-coordinate on the Pettifor numbering system as a 2-dimensional
-
-        """
-        metric = metric if metric is not None else self.distance_metric
-
-        atomic_num = self._get_atomic_num(element)
-        atom_info = self.periodic_tab['elements'][atomic_num]
-
-        if metric == "manhattan":
-            return (atom_info['xpos'], atom_info['ypos'])
-
-        elif metric == "petti":
-            return (atom_info['petti_num'], 0)
-
-        elif metric == "mod_petti":
-            return (atom_info['mod_petti_num'], 0)
-
-    def _return_positions(self, composition):
-        element_pos = {}
-
-        for element in composition:
-            element_pos[element] = self._get_position(element, metric="manhattan")
-
-        return element_pos
-
-    def _pairwise_dist(self, comp1_orig, comp2_orig):
-        """
-        Return matched pairs of closest elements
-        TODO: Refactor the code to use a simpler datastructure than dictionarys
-        of dictionarys
-        """
-        # Make copies of these to avoid changing original
-        comp1 = deepcopy(comp1_orig)
-        comp2 = deepcopy(comp2_orig)
-
-        pairing_dict = {}
-
-        # Check every element in the table, add to pair and pop from both lists if theres an exact match
-        for element in list(comp1.keys()):
-            if element in comp2:
-                # Remove from both lists if we have a shared element and update with distance 0
-                pairing_dict[element] = [element, 0]
-                comp1.pop(element)
-                comp2.pop(element)
-
-        # List the elements we're using for use in a square matrix, craete
-        # a list of the coordinates of these on the periodic table, and make
-        # a square distance matrix
-        comp1_elements = list(comp1.keys())
-        comp2_elements = list(comp2.keys())
-        elements = comp1_elements + comp2_elements
-
-        coords = list(map(self._get_position, elements))
-
-        dist_matrix = np.array(squareform(pdist(coords, metric="cityblock")))
-
-        # As we only want to match those from opposing compositions we will
-        # look at the top right quadrant only
-        dist_cost = dist_matrix[:len(comp1), len(comp1):]
-
-        # Use the minimum weight matching algorithm for bipartite graphs to find
-        # the best combination of these
-        row_ind, col_ind = linear_sum_assignment(dist_cost)
-
-        for i, _ in enumerate(row_ind):
-            pairing_dict[comp1_elements[row_ind[i]]] = [comp2_elements[col_ind[i]], dist_cost[row_ind[i]][col_ind[i]]]
-
-        return pairing_dict
-
 
     def hamming_dist(self, comp2, comp1=None, flag=True):
         """
@@ -346,6 +153,188 @@ class ChemHammer():
                 dist += distribution * self.LEVENSH_MOD
 
         return dist
+
+    def _get_periodic_tab(self):
+        """
+        Attempt to load periodic data from the same folder, else download
+        it from the web
+        """
+        try:
+            with open('ElementData.json') as json_data:
+                periodic_data = json.load(json_data)
+            return periodic_data
+
+        except FileNotFoundError as e:
+            print(f"ELement lookup table failed to load due to {e}")
+            print("Attempting to download from the web, please allow firewall access")
+            url = 'https://raw.githubusercontent.com/SurgeArrester/ChemHammer/master/ElementData.json'
+            response = urllib.request.urlopen(url)
+            data = response.read()      # a `bytes` object
+            data = data.decode('utf-8')
+            periodic_data = json.loads(data)
+            return periodic_data
+
+        except Exception as e:
+            print(f"Failed due to {e}")
+
+    def _is_balanced(self, formula):
+        """Check if all sort of brackets come in pairs."""
+        # Very naive check, just here because you always need some input checking
+        c = Counter(formula)
+        return c['['] == c[']'] and c['{'] == c['}'] and c['('] == c[')']
+
+    def _dictify(self, tuples):
+        """Transform tuples of tuples to a dict of atoms."""
+        res = dict()
+        for atom, n in tuples:
+            try:
+                res[atom] += int(n or 1)
+            except KeyError:
+                res[atom] = int(n or 1)
+        return res
+
+    def _fuse(self, mol1, mol2, w=1):
+        """ Fuse 2 dicts representing molecules. Return a new dict. """
+        return {atom: (mol1.get(atom, 0) + mol2.get(atom, 0)) * w for atom in set(mol1) | set(mol2)}
+
+    def _parse(self, formula):
+        """
+        Return the molecule dict and length of parsed part.
+        Recurse on opening brackets to parse the subpart and
+        return on closing ones because it is the end of said subpart.
+        """
+        q = []
+        mol = {}
+        i = 0
+
+        while i < len(formula):
+            # Using a classic loop allow for manipulating the cursor
+            token = formula[i]
+
+            if token in self.CLOSERS:
+                # Check for an index for this part
+                m = re.match('\d+', formula[i+1:])
+                if m:
+                    weight = int(m.group(0))
+                    i += len(m.group(0))
+                else:
+                    weight = 1
+
+                submol = self._dictify(re.findall(self.ATOM_REGEX, ''.join(q)))
+                return self._fuse(mol, submol, weight), i
+
+            elif token in self.OPENERS:
+                submol, l = self._parse(formula[i+1:])
+                mol = self._fuse(mol, submol)
+                # skip the already read submol
+                i += l + 1
+            else:
+                q.append(token)
+
+            i += 1
+
+        # Fuse in all that's left at base level
+        return self._fuse(mol, self._dictify(re.findall(self.ATOM_REGEX, ''.join(q)))), i
+
+    def _parse_formula(self, formula):
+        """Parse the formula and return a dict with occurences of each atom."""
+        if not self._is_balanced(formula):
+            raise ValueError("Your brackets not matching in pairs ![{]$[&?)]}!]")
+
+        return self._parse(formula)[0]
+
+    def _normalise_composition(self, composition):
+        """ Sum up the numbers in our counter to get total atom count """
+
+        composition = deepcopy(composition)
+        # check it has been processed
+        if isinstance(composition, str):
+            composition = self._parse_formula(composition)
+
+        atom_count =  sum(composition.values(), 0.0)
+
+        for atom in composition:
+            composition[atom] /= atom_count
+
+        return composition
+
+    def _get_atomic_num(self, element_string):
+        """ Return atomic number from element string """
+        for i, element in enumerate(self.periodic_tab['elements']):
+            if element['symbol'] == element_string:
+                return i
+
+    def _get_position(self, element, metric=None):
+        """
+        Return either the x, y coordinate of an elements position, or the
+        x-coordinate on the Pettifor numbering system as a 2-dimensional
+        """
+        metric = metric if metric is not None else self.distance_metric
+
+        atomic_num = self._get_atomic_num(element)
+        atom_info = self.periodic_tab['elements'][atomic_num]
+
+        if metric == "manhattan":
+            return (atom_info['xpos'], atom_info['ypos'])
+
+        elif metric == "petti":
+            return (atom_info['petti_num'], 0)
+
+        elif metric == "mod_petti":
+            return (atom_info['mod_petti_num'], 0)
+
+    def _return_positions(self, composition):
+        """ Return a dictionary of associated positions for each element """
+        element_pos = {}
+
+        for element in composition:
+            element_pos[element] = self._get_position(element, metric="manhattan")
+
+        return element_pos
+
+    def _pairwise_dist(self, comp1_orig, comp2_orig):
+        """
+        Return matched pairs of closest elements
+        TODO: Refactor the code to use a simpler datastructure than dictionarys
+        of dictionarys
+        """
+        # Make copies of these to avoid changing original
+        comp1 = deepcopy(comp1_orig)
+        comp2 = deepcopy(comp2_orig)
+
+        pairing_dict = {}
+
+        # Check every element in the table, add to pair and pop from both lists if theres an exact match
+        for element in list(comp1.keys()):
+            if element in comp2:
+                # Remove from both lists if we have a shared element and update with distance 0
+                pairing_dict[element] = [element, 0]
+                comp1.pop(element)
+                comp2.pop(element)
+
+        # List the elements we're using for use in a square matrix, craete
+        # a list of the coordinates of these on the periodic table, and make
+        # a square distance matrix
+        comp1_elements = list(comp1.keys())
+        comp2_elements = list(comp2.keys())
+        elements = comp1_elements + comp2_elements
+
+        coords = list(map(self._get_position, elements))
+
+        dist_matrix = np.array(squareform(pdist(coords, metric="cityblock")))
+
+        # As we only want to match those from opposing compositions we will
+        # look at the top right quadrant only
+        dist_cost = dist_matrix[:len(comp1), len(comp1):]
+
+        # Use the minimum weight matching algorithm for bipartite graphs to find
+        # the best combination of these
+        row_ind, col_ind = linear_sum_assignment(dist_cost)
+
+        for i, _ in enumerate(row_ind):
+            pairing_dict[comp1_elements[row_ind[i]]] = [comp2_elements[col_ind[i]], dist_cost[row_ind[i]][col_ind[i]]]
+
+        return pairing_dict
 
 if __name__ == "__main__":
     main()
