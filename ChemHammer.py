@@ -2,9 +2,10 @@
 A class to compute a normalised vector of atomic counts and calculate the
 Hamming distance to another chemical composition.
 
+Author: Cameron Hargreaves
+
 Python Parser Source: https://github.com/Zapaan/python-chemical-formula-parser
 Periodic table JSON data: https://github.com/Bowserinator/Periodic-Table-JSON
-All additional work: Cameron Hargreaves
 
 TODO: Refine the hamming distance metric and levenshtein distance metric
 
@@ -27,14 +28,14 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import linear_sum_assignment
 
 def main():
-    test_str = "Sc (Al O3) Cd"
+    test_str = "Sc (Al O3)"
 
     x = ChemHammer("Ca (Ti O3)")
 
     print(f"Composition is {x.composition}")
     print(f"Normalised Composition is {x.normed_composition}")
     print(f"Euclidean Distance is {x.euclidean_dist(test_str)}")
-    print(f"Hamming Distance is {x.hamming_dist(test_str)[0]}")
+    print(f"Hamming Distance is {x.hamming_dist(test_str)}")
     print(f"Levenshtein Distance is {x.levenshtein_dist((test_str))}")
 
 class ChemHammer():
@@ -264,7 +265,7 @@ class ChemHammer():
         return pairing_dict
 
 
-    def hamming_dist(self, comp2, comp1=None, base_call_flag=True):
+    def hamming_dist(self, comp2, comp1=None, warn_flag=True):
         """
         This is similar to euclidean distance, however adds a further distance
         metric depending on manhattan distance between closest neighbours
@@ -288,7 +289,11 @@ class ChemHammer():
         for key, value in pairwise_matches.items():
             dist += abs(comp1[key] - comp2[value[0]]) + value[1] * self.DIST_MOD
 
-        return dist, pairwise_matches
+        if not warn_flag:
+            return dist, pairwise_matches
+
+        else:
+            return dist
 
     def levenshtein_dist(self, comp2, comp1 = None):
         """
@@ -303,16 +308,22 @@ class ChemHammer():
             comp2 = self.normalise_composition(comp2)
 
         # Calculate the hamming dist first
-        dist, pairwise_matches = self.hamming_dist(comp2, base_call_flag=False)
+        dist, pairwise_matches = self.hamming_dist(comp2, warn_flag=False)
 
-        # Now mop up the remaining elements that weren't mapped to one another
+        print(dist)
+
+        # Now mop  up the remaining elements that weren't mapped to one another
         for element, distribution in comp1.items():
             if element not in pairwise_matches:
                 dist += distribution * self.LEVENSH_MOD
 
+        print(dist)
+
         for element, distribution in comp2.items():
-            if element not in pairwise_matches:
+            if element not in [value[0] for key, value in pairwise_matches.items()]:
                 dist += distribution * self.LEVENSH_MOD
+
+        print(dist)
 
         return dist
 
