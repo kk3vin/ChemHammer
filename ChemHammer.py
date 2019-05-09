@@ -10,7 +10,7 @@ Periodic table JSON data: https://github.com/Bowserinator/Periodic-Table-JSON,
 updated to include the Pettifor number and modified Pettifor number from
 https://iopscience.iop.org/article/10.1088/1367-2630/18/9/093011
 
-TODO: Refine the hamming distance metric and levenshtein distance metric
+TODO: Refine the hamming and levenshtein weighting hyperparameters
 
 """
 
@@ -32,9 +32,9 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import linear_sum_assignment
 
 def main():
-    test_str = "Sc (Al O3)"
+    test_str = "Li7La3Zr2O12"
 
-    x = ChemHammer("Ca (Ti O3)", metric="mod_petti")
+    x = ChemHammer("LiZr2P3O12", metric="mod_petti")
     y = ChemHammer(test_str)
 
     print(f"Test composition is {y.composition}")
@@ -58,12 +58,12 @@ class ChemHammer():
 
     def __init__(self, formula, metric="mod_petti"):
         self.formula = formula
-        self.periodic_tab = self.get_periodic_tab()
-        self.composition = self.parse_formula(formula)
-        self.normed_composition = self.normalise_composition(self.composition)
+        self.periodic_tab = self._get_periodic_tab()
+        self.composition = self._parse_formula(formula)
+        self.normed_composition = self._normalise_composition(self.composition)
         self.distance_metric = metric
 
-    def get_periodic_tab(self):
+    def _get_periodic_tab(self):
         """
         Attempt to load periodic data from the same folder, else download
         it from the web
@@ -74,7 +74,7 @@ class ChemHammer():
             return periodic_data
 
         except FileNotFoundError as e:
-            print(f"File failed to load due to {e}")
+            print(f"ELement lookup table failed to load due to {e}")
             print("Attempting to download from the web, please allow firewall access")
             url = 'https://raw.githubusercontent.com/SurgeArrester/ChemHammer/master/ElementData.json'
             response = urllib.request.urlopen(url)
@@ -87,7 +87,7 @@ class ChemHammer():
             print(f"Failed due to {e}")
 
 
-    def is_balanced(self, formula):
+    def _is_balanced(self, formula):
         """Check if all sort of brackets come in pairs."""
         # Very naive check, just here because you always need some input checking
         c = Counter(formula)
@@ -152,21 +152,21 @@ class ChemHammer():
         return self._fuse(mol, self._dictify(re.findall(self.ATOM_REGEX, ''.join(q)))), i
 
 
-    def parse_formula(self, formula):
+    def _parse_formula(self, formula):
         """Parse the formula and return a dict with occurences of each atom."""
-        if not self.is_balanced(formula):
+        if not self._is_balanced(formula):
             raise ValueError("Your brackets not matching in pairs ![{]$[&?)]}!]")
 
         return self._parse(formula)[0]
 
-    def normalise_composition(self, composition):
+    def _normalise_composition(self, composition):
         """
         Sum up the numbers in our counter to get total atom count
         """
         composition = deepcopy(composition)
         # check it has been processed
         if isinstance(composition, str):
-            composition = self.parse_formula(composition)
+            composition = self._parse_formula(composition)
 
         atom_count =  sum(composition.values(), 0.0)
 
@@ -175,7 +175,7 @@ class ChemHammer():
 
         return composition
 
-    def get_atomic_num(self, element_string):
+    def _get_atomic_num(self, element_string):
         """
         Return atomic number from element string
         """
@@ -192,8 +192,8 @@ class ChemHammer():
         comp1 = comp1 if comp1 is not None else self.normed_composition
 
         if isinstance(comp2, str):
-            comp2 = self.parse_formula(comp2)
-            comp2 = self.normalise_composition(comp2)
+            comp2 = self._parse_formula(comp2)
+            comp2 = self._normalise_composition(comp2)
 
         dist = 0
 
@@ -215,7 +215,7 @@ class ChemHammer():
 
         return sqrt(dist)
 
-    def position(self, element, metric=None):
+    def _get_position(self, element, metric=None):
         """
         Return either the x, y coordinate of an elements position, or the
         x-coordinate on the Pettifor numbering system as a 2-dimensional
@@ -223,7 +223,7 @@ class ChemHammer():
         """
         metric = metric if metric is not None else self.distance_metric
 
-        atomic_num = self.get_atomic_num(element)
+        atomic_num = self._get_atomic_num(element)
         atom_info = self.periodic_tab['elements'][atomic_num]
 
         if metric == "manhattan":
@@ -235,15 +235,15 @@ class ChemHammer():
         elif metric == "mod_petti":
             return (atom_info['mod_petti_num'], 0)
 
-    def return_positions(self, composition):
+    def _return_positions(self, composition):
         element_pos = {}
 
         for element in composition:
-            element_pos[element] = self.position(element, metric="manhattan")
+            element_pos[element] = self._get_position(element, metric="manhattan")
 
         return element_pos
 
-    def pairwise_dist(self, comp1_orig, comp2_orig):
+    def _pairwise_dist(self, comp1_orig, comp2_orig):
         """
         Return matched pairs of closest elements
         TODO: Refactor the code to use a simpler datastructure than dictionarys
@@ -270,7 +270,7 @@ class ChemHammer():
         comp2_elements = list(comp2.keys())
         elements = comp1_elements + comp2_elements
 
-        coords = list(map(self.position, elements))
+        coords = list(map(self._get_position, elements))
 
         dist_matrix = np.array(squareform(pdist(coords, metric="cityblock")))
 
@@ -296,8 +296,8 @@ class ChemHammer():
         comp1 = comp1 if comp1 is not None else self.normed_composition
 
         if isinstance(comp2, str):
-            comp2 = self.parse_formula(comp2)
-            comp2 = self.normalise_composition(comp2)
+            comp2 = self._parse_formula(comp2)
+            comp2 = self._normalise_composition(comp2)
 
         if isinstance(comp2, ChemHammer):
             comp2 = comp2.composition
@@ -306,9 +306,9 @@ class ChemHammer():
             warnings.warn("Must have equal numbers of unique elements for Hamming distance, use levenshtein distance")
 
         # Pair up each of the atoms so that the overall distances are minimised
-        comp1_pos = self.return_positions(comp1)
-        comp2_pos = self.return_positions(comp2)
-        pairwise_matches = self.pairwise_dist(comp1_pos, comp2_pos)
+        comp1_pos = self._return_positions(comp1)
+        comp2_pos = self._return_positions(comp2)
+        pairwise_matches = self._pairwise_dist(comp1_pos, comp2_pos)
 
         dist = 0
         # Loop through the union of  keys
@@ -330,8 +330,8 @@ class ChemHammer():
         comp1 = comp1 if comp1 is not None else self.normed_composition
 
         if isinstance(comp2, str):
-            comp2 = self.parse_formula(comp2)
-            comp2 = self.normalise_composition(comp2)
+            comp2 = self._parse_formula(comp2)
+            comp2 = self._normalise_composition(comp2)
 
         # Calculate the hamming dist first
         dist, pairwise_matches = self.hamming_dist(comp2, flag=False)
