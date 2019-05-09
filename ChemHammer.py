@@ -34,9 +34,12 @@ from scipy.optimize import linear_sum_assignment
 def main():
     test_str = "Sc (Al O3)"
 
-    x = ChemHammer("Ca (Ti O3)")
+    x = ChemHammer("Ca (Ti O3)", metric="mod_petti")
+    y = ChemHammer(test_str)
 
+    print(f"Test composition is {y.composition}")
     print(f"Composition is {x.composition}")
+    print(f"Normalised Test Composition is {y.normed_composition}")
     print(f"Normalised Composition is {x.normed_composition}")
     print(f"Euclidean Distance is {x.euclidean_dist(test_str)}")
     print(f"Hamming Distance is {x.hamming_dist(test_str)}")
@@ -48,16 +51,17 @@ class ChemHammer():
     CLOSERS = ')}]'
 
     # How much the change in element position affects the distance metric
-    DIST_MOD = 0.5
+    DIST_MOD = 1
 
     # How much the addition of a new element affects the distance metric
-    LEVENSH_MOD = 1.3
+    LEVENSH_MOD = 1.0
 
-    def __init__(self, formula):
+    def __init__(self, formula, metric="mod_petti"):
         self.formula = formula
         self.periodic_tab = self.get_periodic_tab()
         self.composition = self.parse_formula(formula)
         self.normed_composition = self.normalise_composition(self.composition)
+        self.distance_metric = metric
 
     def get_periodic_tab(self):
         """
@@ -72,7 +76,7 @@ class ChemHammer():
         except FileNotFoundError as e:
             print(f"File failed to load due to {e}")
             print("Attempting to download from the web, please allow firewall access")
-            url = 'https://raw.githubusercontent.com/SurgeArrester/ChemHammer/master/Periodic-Table-JSON.json'
+            url = 'https://raw.githubusercontent.com/SurgeArrester/ChemHammer/master/ElementData.json'
             response = urllib.request.urlopen(url)
             data = response.read()      # a `bytes` object
             data = data.decode('utf-8')
@@ -211,17 +215,31 @@ class ChemHammer():
 
         return sqrt(dist)
 
-    def position(self, element):
+    def position(self, element, metric=None):
+        """
+        Return either the x, y coordinate of an elements position, or the
+        x-coordinate on the Pettifor numbering system as a 2-dimensional
+
+        """
+        metric = metric if metric is not None else self.distance_metric
+
         atomic_num = self.get_atomic_num(element)
         atom_info = self.periodic_tab['elements'][atomic_num]
 
-        return (atom_info['xpos'], atom_info['ypos'])
+        if metric == "manhattan":
+            return (atom_info['xpos'], atom_info['ypos'])
+
+        elif metric == "petti":
+            return (atom_info['petti_num'], 0)
+
+        elif metric == "mod_petti":
+            return (atom_info['mod_petti_num'], 0)
 
     def return_positions(self, composition):
         element_pos = {}
 
         for element in composition:
-            element_pos[element] = self.position(element)
+            element_pos[element] = self.position(element, metric="manhattan")
 
         return element_pos
 
@@ -253,6 +271,7 @@ class ChemHammer():
         elements = comp1_elements + comp2_elements
 
         coords = list(map(self.position, elements))
+
         dist_matrix = np.array(squareform(pdist(coords, metric="cityblock")))
 
         # As we only want to match those from opposing compositions we will
