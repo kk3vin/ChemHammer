@@ -1,11 +1,14 @@
 """
 A class to compute a normalised vector of atomic counts and calculate the
-Hamming distance to another chemical composition.
+Hamming/Damerau-Levenshtein distance to another chemical composition.
 
 Author: Cameron Hargreaves
 
 Python Parser Source: https://github.com/Zapaan/python-chemical-formula-parser
-Periodic table JSON data: https://github.com/Bowserinator/Periodic-Table-JSON
+
+Periodic table JSON data: https://github.com/Bowserinator/Periodic-Table-JSON,
+updated to include the Pettifor number and modified Pettifor number from
+https://iopscience.iop.org/article/10.1088/1367-2630/18/9/093011
 
 TODO: Refine the hamming distance metric and levenshtein distance metric
 
@@ -21,6 +24,7 @@ import urllib.request
 
 from copy import deepcopy
 from collections import Counter
+from math import sqrt
 
 import numpy as np
 
@@ -61,7 +65,7 @@ class ChemHammer():
         it from the web
         """
         try:
-            with open('Periodic-Table-JSON.json') as json_data:
+            with open('ElementData.json') as json_data:
                 periodic_data = json.load(json_data)
             return periodic_data
 
@@ -193,19 +197,19 @@ class ChemHammer():
         for key in list(comp1.keys()) + list(comp2.keys()):
             # Simply take the distance between if element is present in both
             if key in comp1 and key in comp2:
-                dist += abs(comp1[key] - comp2[key])
+                dist += (comp1[key] - comp2[key]) ** 2
 
             #If its' not a shared element try and take distance from each dict
             elif key in comp1:
-                dist += comp1[key]
+                dist += comp1[key] ** 2
 
             elif key in comp2:
-                dist += comp2[key]
+                dist += comp2[key] ** 2
 
             else:
                 print("Key not in either, strange bug occurred")
 
-        return dist
+        return sqrt(dist)
 
     def position(self, element):
         atomic_num = self.get_atomic_num(element)
@@ -265,7 +269,7 @@ class ChemHammer():
         return pairing_dict
 
 
-    def hamming_dist(self, comp2, comp1=None, warn_flag=True):
+    def hamming_dist(self, comp2, comp1=None, flag=True):
         """
         This is similar to euclidean distance, however adds a further distance
         metric depending on manhattan distance between closest neighbours
@@ -276,7 +280,10 @@ class ChemHammer():
             comp2 = self.parse_formula(comp2)
             comp2 = self.normalise_composition(comp2)
 
-        if len(comp1) != len(comp2) and base_call_flag:
+        if isinstance(comp2, ChemHammer):
+            comp2 = comp2.composition
+
+        if len(comp1) != len(comp2) and flag:
             warnings.warn("Must have equal numbers of unique elements for Hamming distance, use levenshtein distance")
 
         # Pair up each of the atoms so that the overall distances are minimised
@@ -289,7 +296,7 @@ class ChemHammer():
         for key, value in pairwise_matches.items():
             dist += abs(comp1[key] - comp2[value[0]]) + value[1] * self.DIST_MOD
 
-        if not warn_flag:
+        if not flag:
             return dist, pairwise_matches
 
         else:
@@ -308,22 +315,16 @@ class ChemHammer():
             comp2 = self.normalise_composition(comp2)
 
         # Calculate the hamming dist first
-        dist, pairwise_matches = self.hamming_dist(comp2, warn_flag=False)
-
-        print(dist)
+        dist, pairwise_matches = self.hamming_dist(comp2, flag=False)
 
         # Now mop  up the remaining elements that weren't mapped to one another
         for element, distribution in comp1.items():
             if element not in pairwise_matches:
                 dist += distribution * self.LEVENSH_MOD
 
-        print(dist)
-
         for element, distribution in comp2.items():
             if element not in [value[0] for key, value in pairwise_matches.items()]:
                 dist += distribution * self.LEVENSH_MOD
-
-        print(dist)
 
         return dist
 
