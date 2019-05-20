@@ -52,7 +52,7 @@ class ChemHammer():
 
     # How much the change in element position affects the distance metric
     # Advsied to use 0.1 for pettifor numbers as they have much larger variance
-    DIST_MOD = 1
+    DIST_MOD = 2
 
     # How much the addition of a new element affects the distance metric
     LEVENSH_MOD = 0.1

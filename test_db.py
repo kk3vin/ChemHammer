@@ -12,6 +12,10 @@ from mpi4py import MPI
 
 from ChemHammer import ChemHammer
 
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+root = 0
+
 def split_indices(input_array):
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank() # If using MPI
@@ -51,29 +55,29 @@ my_compounds, my_splits = split_indices(compounds)
 
 checked = db['Confirmed Y/N']
 my_checked = checked[my_splits]
-db['Potential ICSD'] = Series(np.zeros(816), index=db.index)
-db['Predicted ICSD'] = Series(np.zeros(816), index=db.index)
-db['Predicted ICSD Formula'] = Series(np.zeros(816), index=db.index)
 
+strings = []
+
+print("Enttering main loop")
+tested_indices = []
 
 for i, compound in enumerate(my_compounds):
     comp = ChemHammer(compound)
     tested_results = []
-    tested_indices = []
 
     for x in result:
-        if checked[i] == "N":
-            try:
-                tested_results.append((comp.levenshtein_dist(x[0]), x[1]))
-                tested_indices.append(i)
-            except:
-                pass
+        try:
+            tested_results.append((comp.levenshtein_dist(x[0]), x[1]))
+
+        except:
+            pass
 
     # sort on similarity score
     sorted_result = sorted(tested_results, key = lambda x : x[0])
     top_ten = sorted_result[:10]
     string_to_write = f"For compound {compound} the top ten closest matches are:\n"
 
+    # Add each of the closest matches
     for j, icsd_code in enumerate(top_ten):
         cursor.execute(f'select formula from data where icsd_code like "%{icsd_code[1]}%"')
         if j == 0:
@@ -83,11 +87,29 @@ for i, compound in enumerate(my_compounds):
         print_string = f"{icsd_code[1]} : {cursor.fetchall()[0][0]} with distance {icsd_code[0]}"
         string_to_write += print_string + "\n"
 
-    # Append to dataframe and save excel
-    db.loc[i, 'Potential ICSD'] = string_to_write
+    strings.append(string_to_write)
 
-    if i % 5 == 0:
-        print(f"{i/len(db) * 100}% complete")
+# Once each process has tested theirs send back to root and write to file
+sendcounts = np.array(comm.gather(len(strings), root))
+
+if rank == root:
+    stringbuf = np.empty(sum(sendcounts), dtype=int)
+    indexbuf = np.empty(sum(sendcounts), dtype=int)
+else:
+    stringbuf = None
+    indexbuf = None
+
+comm.Gatherv(sendbuf=strings, recvbuf=(stringbuf, sendcounts), root=root)
+comm.Gatherv(sendbuf=my_splits, recvbuf=(indexbuf, sendcounts), root=root)
+
+print("Got to this bit!")
+print(len(my_splits))
+
+# Append to dataframe and save excel
+db.loc[i, 'Potential ICSD'] = string_to_write
+
+if i % 5 == 0:
+    print(f"{i/len(db) * 100}% complete")
 
 writer = ExcelWriter('PythonExport.xlsx')
 db.to_excel(writer, 'Sheet1')
