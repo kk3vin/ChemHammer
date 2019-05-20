@@ -8,14 +8,36 @@ import numpy as np
 from pandas import Series
 from pandas import ExcelWriter
 
+from mpi4py import MPI
+
 from ChemHammer import ChemHammer
+
+def split_indices(input_array):
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank() # If using MPI
+    num_processes = comm.size
+
+    if rank == 0:                # First rank splits the files up
+        indexes = np.arange(len(input_array))
+        np.random.shuffle(indexes)
+        splits = np.array_split(indexes, num_processes)
+    else:                      # All other processes
+        splits = []
+
+    # wait for process 0 to get the filepaths/splits and broadcast these
+    comm.Barrier()
+    splits = comm.bcast(splits, root=0)
+    my_indexes = splits[comm.rank]
+    # take only filepaths for our rank
+    my_array = [input_array[x] for x in my_indexes]
+    return my_array, my_indexes
 
 time_start = time()
 
 ionic_db_dir = "/home/cameron/Dropbox/University/PhD/ionic_db_labelled_ICSD.xlsx"
-
+cif_db_dir = "/home/cameron/Dropbox/University/PhD/cif.db"
 db = pd.read_excel(ionic_db_dir)
-conn = sqlite3.connect('cif.db')
+conn = sqlite3.connect(cif_db_dir)
 cursor = conn.cursor()
 
 # take all li compounds
@@ -25,17 +47,20 @@ result = cursor.fetchall()
 
 # Add a new column for predicted ICSD codes
 compounds = db['Compound Formula']
-checked = db['Confirmed Y/N']
+my_compounds, my_splits = split_indices(compounds)
 
+checked = db['Confirmed Y/N']
+my_checked = checked[my_splits]
 db['Potential ICSD'] = Series(np.zeros(816), index=db.index)
 db['Predicted ICSD'] = Series(np.zeros(816), index=db.index)
 db['Predicted ICSD Formula'] = Series(np.zeros(816), index=db.index)
 
 
-for i, compound in enumerate(compounds):
+for i, compound in enumerate(my_compounds):
     comp = ChemHammer(compound)
     tested_results = []
     tested_indices = []
+
     for x in result:
         if checked[i] == "N":
             try:
