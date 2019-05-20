@@ -46,15 +46,16 @@ def main():
     print(f"Levenshtein Distance is {x.levenshtein_dist((test_str))}")
 
 class ChemHammer():
-    ATOM_REGEX = '([A-Z][a-z]*)(\d*)'
+    ATOM_REGEX = '([A-Z][a-z]*)(\d*\.*\d*)'
     OPENERS = '({['
     CLOSERS = ')}]'
 
     # How much the change in element position affects the distance metric
+    # Advsied to use 0.1 for pettifor numbers as they have much larger variance
     DIST_MOD = 1
 
     # How much the addition of a new element affects the distance metric
-    LEVENSH_MOD = 1.0
+    LEVENSH_MOD = 0.1
 
     def __init__(self, formula, metric="mod_petti"):
         self.formula = formula
@@ -134,11 +135,14 @@ class ChemHammer():
         the root composition to the test compostion and then add the weights of
         the leftover elements to the distance metric
         """
+        self.testing_formula = comp2
+
         comp1 = comp1 if comp1 is not None else self.normed_composition
 
         if isinstance(comp2, str):
             comp2 = self._parse_formula(comp2)
             comp2 = self._normalise_composition(comp2)
+
 
         # Calculate the hamming dist first
         dist, pairwise_matches = self.hamming_dist(comp2, flag=False)
@@ -188,9 +192,9 @@ class ChemHammer():
         res = dict()
         for atom, n in tuples:
             try:
-                res[atom] += int(n or 1)
+                res[atom] += float(n or 1)
             except KeyError:
-                res[atom] = int(n or 1)
+                res[atom] = float(n or 1)
         return res
 
     def _fuse(self, mol1, mol2, w=1):
@@ -213,9 +217,9 @@ class ChemHammer():
 
             if token in self.CLOSERS:
                 # Check for an index for this part
-                m = re.match('\d+', formula[i+1:])
+                m = re.match('\d+\.*\d*', formula[i+1:])
                 if m:
-                    weight = int(m.group(0))
+                    weight = float(m.group(0))
                     i += len(m.group(0))
                 else:
                     weight = 1
@@ -243,10 +247,10 @@ class ChemHammer():
 
         return self._parse(formula)[0]
 
-    def _normalise_composition(self, composition):
+    def _normalise_composition(self, input_comp):
         """ Sum up the numbers in our counter to get total atom count """
 
-        composition = deepcopy(composition)
+        composition = deepcopy(input_comp)
         # check it has been processed
         if isinstance(composition, str):
             composition = self._parse_formula(composition)
@@ -321,18 +325,19 @@ class ChemHammer():
 
         coords = list(map(self._get_position, elements))
 
-        dist_matrix = np.array(squareform(pdist(coords, metric="cityblock")))
+        if len(comp1) > 0 and len(comp2) > 0:
+            dist_matrix = np.array(squareform(pdist(coords, metric="cityblock")))
 
-        # As we only want to match those from opposing compositions we will
-        # look at the top right quadrant only
-        dist_cost = dist_matrix[:len(comp1), len(comp1):]
+            # As we only want to match those from opposing compositions we will
+            # look at the top right quadrant only
+            dist_cost = dist_matrix[:len(comp1), len(comp1):]
 
-        # Use the minimum weight matching algorithm for bipartite graphs to find
-        # the best combination of these
-        row_ind, col_ind = linear_sum_assignment(dist_cost)
+            # Use the minimum weight matching algorithm for bipartite graphs to find
+            # the best combination of these
+            row_ind, col_ind = linear_sum_assignment(dist_cost)
 
-        for i, _ in enumerate(row_ind):
-            pairing_dict[comp1_elements[row_ind[i]]] = [comp2_elements[col_ind[i]], dist_cost[row_ind[i]][col_ind[i]]]
+            for i, _ in enumerate(row_ind):
+                pairing_dict[comp1_elements[row_ind[i]]] = [comp2_elements[col_ind[i]], dist_cost[row_ind[i]][col_ind[i]]]
 
         return pairing_dict
 
