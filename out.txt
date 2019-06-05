@@ -1,0 +1,7 @@
+Test composition is {'Zr': 2.0, 'Li': 7.0, 'La': 3.0, 'O': 12.0}
+Composition is {'Zr': 2.0, 'Li': 1.0, 'P': 3.0, 'O': 12.0}
+Normalised Test Composition is {'Zr': 0.08333333333333333, 'Li': 0.2916666666666667, 'La': 0.125, 'O': 0.5}
+Normalised Composition is {'Zr': 0.1111111111111111, 'Li': 0.05555555555555555, 'P': 0.16666666666666666, 'O': 0.6666666666666666}
+Euclidean Distance is 0.460432901506966
+Hamming Distance is 114.47222222222223
+Levenshtein Distance is 114.47222222222223

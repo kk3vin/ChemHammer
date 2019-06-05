@@ -299,7 +299,7 @@ class ChemHammer():
     def _pairwise_dist(self, comp1_orig, comp2_orig):
         """
         Return matched pairs of closest elements
-        TODO: Refactor the code to use a simpler datastructure than dictionarys
+        TODO: Refactor the code to use a simpler datastructure than dictionaries
         of dictionarys
         """
         # Make copies of these to avoid changing original
@@ -316,7 +316,7 @@ class ChemHammer():
                 comp1.pop(element)
                 comp2.pop(element)
 
-        # List the elements we're using for use in a square matrix, craete
+        # List the elements we're using for use in a square matrix, create
         # a list of the coordinates of these on the periodic table, and make
         # a square distance matrix
         comp1_elements = list(comp1.keys())

@@ -2,10 +2,14 @@
 A set of formulas to cross analyse the ChemHammer performance
 """
 import os
+from random import shuffle
+from copy import deepcopy
 
 from scipy.spatial.distance import squareform
 import matplotlib.pyplot as plt
+
 from ChemHammer import ChemHammer
+from MatrixSort import DistanceMatrixSorter
 
 formula_list = ["Na0.99Zr2P3O12",     # Some NASICONs first repeated to ensure = 0
                 "NaZr2P3O12",
@@ -52,6 +56,7 @@ formula_list = ["Na0.99Zr2P3O12",     # Some NASICONs first repeated to ensure =
                 "Li 3 OCl 0.5 Br 0.5"]
 
 lev_dist = []
+
 for i in range(len(formula_list)):
     x = ChemHammer(formula_list[i], metric="manhattan")
     for j in range(i, len(formula_list)):
@@ -59,7 +64,46 @@ for i in range(len(formula_list)):
 
 lev_dist = squareform(lev_dist)
 
-plt.imshow(lev_dist, cmap='binary', interpolation='nearest')
-plt.show()
+plt.subplot(131, aspect='equal')
+plt.imshow(lev_dist, cmap='binary')
 
-print(x.composition)
+
+# Now lets shuffle the list and repeat the same as above to show disorder
+shuff_lev_dist = []
+shuff_list = deepcopy(formula_list)
+shuffle(shuff_list)
+
+for i in range(len(shuff_list)):
+    x = ChemHammer(shuff_list[i], metric="manhattan")
+    for j in range(i, len(formula_list)):
+        shuff_lev_dist.append(x.levenshtein_dist(shuff_list[j]))
+
+shuff_lev_dist = squareform(shuff_lev_dist)
+
+plt.subplot(132, aspect='equal')
+plt.imshow(shuff_lev_dist, cmap='binary')
+
+# "ward", "single", "average", "complete"
+# Now lets resort the list and see how this comes out
+sorted_mat_ward = DistanceMatrixSorter(lev_dist, method="ward")
+sorted_mat_sing = DistanceMatrixSorter(lev_dist, method="single")
+sorted_mat_ave = DistanceMatrixSorter(lev_dist, method="average")
+sorted_mat_comp = DistanceMatrixSorter(lev_dist, method="complete")
+
+plt.subplot(133, aspect='equal')
+plt.imshow(sorted_mat_ward.ordered_dist_mat, cmap='binary')
+
+# plt.subplot(246, aspect='equal')
+# plt.pcolormesh(sorted_mat_ward.ordered_dist_mat, cmap='binary')
+
+# plt.subplot(247, aspect='equal')
+# plt.pcolormesh(sorted_mat_ward.ordered_dist_mat, cmap='binary')
+
+# plt.subplot(248, aspect='equal')
+# plt.pcolormesh(sorted_mat_ward.ordered_dist_mat, cmap='binary')
+
+plt.show()
+indices = sorted_mat_ward.sorted_index
+resorted_list = [shuff_list[i-1] for i in indices]
+
+print(resorted_list)
