@@ -23,7 +23,7 @@ import warnings
 import urllib.request
 
 from copy import deepcopy
-from collections import Counter
+from collections import Counter, OrderedDict
 from math import sqrt
 
 import numpy as np
@@ -31,11 +31,18 @@ import numpy as np
 from scipy.spatial.distance import pdist, squareform
 from scipy.optimize import linear_sum_assignment
 
+from ortools.graph import pywrapgraph
+
+
+# from MinFlowFinder import MinFlowFinder
+
 def main():
     test_str = "Li7La3Zr2O12"
 
     x = ChemHammer("LiZr2P3O12", metric="mod_petti")
     y = ChemHammer(test_str)
+
+    print(f"Flow distance is: {x.min_flow_dist(y)}")
 
     print(f"Test composition is {y.composition}")
     print(f"Composition is {x.composition}")
@@ -58,12 +65,12 @@ class ChemHammer():
     LEVENSH_MOD = 0.1
 
     def __init__(self, formula, metric="mod_petti"):
-        self.formula = formula
+        self.formula = formula.replace(" ", "")
         self.periodic_tab = self._get_periodic_tab()
-        self.composition = self._parse_formula(formula)
+        self.composition = self._parse_formula(self.formula)
         self.normed_composition = self._normalise_composition(self.composition)
         self.distance_metric = metric
-
+    
     def euclidean_dist(self, comp2, comp1 = None):
         """
         Simply take the euclidean distance between two vectors excluding atom
@@ -157,6 +164,82 @@ class ChemHammer():
                 dist += distribution * self.LEVENSH_MOD
 
         return dist
+
+    def min_flow_dist(self, comp2, comp1 = None):
+        comp1 = comp1 if comp1 is not None else self.normed_composition
+
+        if isinstance(comp2, str):
+            comp2 = self._parse_formula(comp2)
+            comp2 = self._normalise_composition(comp2)
+
+        if isinstance(comp2, ChemHammer):
+            comp2 = comp2.normed_composition
+
+        start_nodes, end_nodes, labels, capacities, costs, supplies = self._generate_parameters(comp1, comp2)
+
+        # Google colab only takes integer values, so we will multiply our floats by 1000 and cast
+        capacities = [int(x * 1000) for x in capacities]
+        supplies = [int(x * 1000) for x in supplies]
+
+        # Instantiate a SimpleMinCostFlow solver.
+        min_cost_flow = pywrapgraph.SimpleMinCostFlow()
+
+        # Add each arc.
+        for i in range(0, len(start_nodes)):
+            min_cost_flow.AddArcWithCapacityAndUnitCost(start_nodes[i], end_nodes[i],
+                                                        capacities[i], costs[i])
+
+        # Add node supplies.
+        for i in range(0, len(supplies)):
+            min_cost_flow.SetNodeSupply(i, supplies[i])
+
+        if min_cost_flow.Solve() == min_cost_flow.OPTIMAL:
+            print('Minimum cost:', min_cost_flow.OptimalCost() / 100)
+            print('')
+            print('  Arc    Flow / Capacity  Cost')
+            for i in range(min_cost_flow.NumArcs()):
+                cost = min_cost_flow.Flow(i) * min_cost_flow.UnitCost(i)
+                print('%s -> %1s, %3s  / %3s       %3s' % (
+                    #min_cost_flow.Tail(i),
+                    labels[min_cost_flow.Tail(i)].split('_')[0],
+                    #min_cost_flow.Head(i),
+                    labels[min_cost_flow.Head(i)].split('_')[0],
+                    min_cost_flow.Flow(i),
+                    min_cost_flow.Capacity(i),
+                    cost))
+            print()
+
+        dist = min_cost_flow.OptimalCost() / 1000
+        return dist
+
+    def _generate_parameters(self, source, sink):
+        start_nodes = []
+        start_labels = []
+        end_nodes = []
+        end_labels = []
+
+        capacities = [] 
+        costs = [] 
+        supply_tracker = OrderedDict()
+
+        for i, key_value_source in enumerate(source.items()):
+            for j, key_value_sink in enumerate(sink.items()):
+                start_nodes.append(i)
+                start_labels.append(key_value_source[0])
+                end_nodes.append(j + len(source))
+                end_labels.append(key_value_sink[0])
+                capacities.append(min(key_value_source[1], key_value_sink[1]))
+                costs.append(abs(self._get_position(key_value_source[0]) - self._get_position(key_value_sink[0])))
+
+        for lab in start_labels:
+            supply_tracker[lab + "_source"] = source[lab]
+        
+        for lab in end_labels:
+            supply_tracker[lab + "_sink"] = -sink[lab]
+        
+        labels = list(supply_tracker.keys())
+        supplies = list(supply_tracker.values())
+        return start_nodes, end_nodes, labels, capacities, costs, supplies
 
     def _get_periodic_tab(self):
         """
@@ -278,14 +361,14 @@ class ChemHammer():
         atomic_num = self._get_atomic_num(element)
         atom_info = self.periodic_tab['elements'][atomic_num]
 
-        if metric == "manhattan":
-            return (atom_info['xpos'], atom_info['ypos'])
+        if metric == "mod_petti":
+            return atom_info['mod_petti_num']
 
         elif metric == "petti":
-            return (atom_info['petti_num'], 0)
-
-        elif metric == "mod_petti":
-            return (atom_info['mod_petti_num'], 0)
+            return atom_info['petti_num']
+        
+        elif metric == "manhattan":
+            return (atom_info['xpos'], atom_info['ypos'])
 
     def _return_positions(self, composition):
         """ Return a dictionary of associated positions for each element """

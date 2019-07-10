@@ -57,10 +57,26 @@ formula_list = ["Na0.99Zr2P3O12",     # Some NASICONs first repeated to ensure =
 
 lev_dist = []
 
+x = ChemHammer('Li 1.3 Al 0.3 Ge 1.7 (PO 4 ) 3')
+y = ChemHammer('Li 1.3 B 0.3 Ge 1.7 (PO 4 ) 3')
+
+print(x.formula)
+print(x.normed_composition)
+print(y.formula)
+print(y.normed_composition)
+print(x.min_flow_dist(y))
+
+
 for i in range(len(formula_list[:-1])):
-    x = ChemHammer(formula_list[i], metric="manhattan")
+    x = ChemHammer(formula_list[i])
     for j in range(i+1, len(formula_list)):
-        lev_dist.append(x.levenshtein_dist(formula_list[j]))
+        print("################")
+        print(x.formula)
+        print(x.normed_composition)
+        y = ChemHammer(formula_list[j])
+        print(y.formula)
+        print(y.normed_composition)
+        lev_dist.append(x.min_flow_dist(y))
 
 lev_dist = squareform(lev_dist)
 
@@ -75,7 +91,7 @@ shuffle(shuff_list)
 for i in range(len(shuff_list) - 1):
     x = ChemHammer(shuff_list[i], metric="manhattan")
     for j in range(i + 1, len(formula_list)):
-        shuff_lev_dist.append(x.levenshtein_dist(shuff_list[j]))
+        shuff_lev_dist.append(x.min_flow_dist(shuff_list[j]))
 
 shuff_lev_dist = squareform(shuff_lev_dist)
 
