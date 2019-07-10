@@ -57,6 +57,10 @@ class ChemHammer():
     OPENERS = '({['
     CLOSERS = ')}]'
 
+    # As the current optimization solver only takes in ints we must multiply 
+    # all floats to capture the decimal places
+    FP_MULTIPLIER = 100000
+
     # How much the change in element position affects the distance metric
     # Advsied to use 0.1 for pettifor numbers as they have much larger variance
     DIST_MOD = 2
@@ -177,9 +181,24 @@ class ChemHammer():
 
         start_nodes, end_nodes, labels, capacities, costs, supplies = self._generate_parameters(comp1, comp2)
 
-        # Google colab only takes integer values, so we will multiply our floats by 1000 and cast
-        capacities = [int(x * 1000) for x in capacities]
-        supplies = [int(x * 1000) for x in supplies]
+        # Google colab only takes integer values, so we will multiply our floats 
+        # by self.FP_MULTIPLIER and cast
+        capacities = [int(x * self.FP_MULTIPLIER) for x in capacities]
+        supplies = [int(x * self.FP_MULTIPLIER) for x in supplies]
+
+        # Due to rounding errors, the two supplies may no longer be equal to one
+        # another. We add the difference to the largest value in the smaller set
+        # to allow this to process and keep the error minimised
+        source_tot = sum([x for x in supplies if x > 0])
+        sink_tot = -sum([x for x in supplies if x < 0])
+
+        while sink_tot < source_tot:
+            supplies[supplies.index(min(supplies))] -= 1
+            sink_tot = -sum([x for x in supplies if x < 0])
+
+        while source_tot < sink_tot:
+            supplies[supplies.index(max(supplies))] += 1
+            source_tot = sum([x for x in supplies if x > 0])
 
         # Instantiate a SimpleMinCostFlow solver.
         min_cost_flow = pywrapgraph.SimpleMinCostFlow()
@@ -194,7 +213,7 @@ class ChemHammer():
             min_cost_flow.SetNodeSupply(i, supplies[i])
 
         if min_cost_flow.Solve() == min_cost_flow.OPTIMAL:
-            print('Minimum cost:', min_cost_flow.OptimalCost() / 100)
+            print('Distance Score:', min_cost_flow.OptimalCost() / self.FP_MULTIPLIER)
             print('')
             print('  Arc    Flow / Capacity  Cost')
             for i in range(min_cost_flow.NumArcs()):
@@ -204,12 +223,12 @@ class ChemHammer():
                     labels[min_cost_flow.Tail(i)].split('_')[0],
                     #min_cost_flow.Head(i),
                     labels[min_cost_flow.Head(i)].split('_')[0],
-                    min_cost_flow.Flow(i),
-                    min_cost_flow.Capacity(i),
-                    cost))
+                    min_cost_flow.Flow(i) ,
+                    min_cost_flow.Capacity(i) ,
+                    cost ))
             print()
 
-        dist = min_cost_flow.OptimalCost() / 1000
+        dist = min_cost_flow.OptimalCost() / self.FP_MULTIPLIER
         return dist
 
     def _generate_parameters(self, source, sink):

@@ -58,7 +58,7 @@ formula_list = ["Na0.99Zr2P3O12",     # Some NASICONs first repeated to ensure =
 lev_dist = []
 
 x = ChemHammer('Li 1.3 Al 0.3 Ge 1.7 (PO 4 ) 3')
-y = ChemHammer('Li 1.3 B 0.3 Ge 1.7 (PO 4 ) 3')
+y = ChemHammer('Li 1.3 In 0.3 Ge 1.7 (PO 4 ) 3')
 
 print(x.formula)
 print(x.normed_composition)
