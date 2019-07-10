@@ -45,39 +45,68 @@ conn = sqlite3.connect(cif_db_dir)
 cursor = conn.cursor()
 
 # take all li compounds
-sql_query = 'select formula, icsd_code from data where formula like "%Ca%"'
+sql_query = 'select formula, icsd_code from data where formula like "%Li%"'
 cursor.execute(f'{sql_query}')
 result = cursor.fetchall()
 
-# Add a new column for predicted ICSD codes
+# # Add a new column for predicted ICSD codes
 compounds = db['Compound Formula']
 my_compounds, my_splits = split_indices(compounds)
 
-checked = db['Confirmed Y/N']
-my_checked = checked[my_splits]
+# checked = db['Confirmed Y/N']
+# my_checked = checked[my_splits]
 
-strings = []
+# strings = []
 
-print("Enttering main loop")
+print("Entering main loop")
 tested_indices = []
 
-for i, compound in enumerate(my_compounds):
-    compound = "Li1.69Na0.14(Al1.83Si4.17O12)" # Just for quick tests, comment out
+test_crystals = [
+    "Li4Al0.3333Si0.1666Ge0.1666P0.3333O4",
+    "Li2GeS3", #Sulfidetypeelectrolytes
+    "Li2ZnGeS4",
+    "Li5GaS4",
+    "Li3.25Ge0.25P0.75S4", #Repeatedcompundbelow
+    "Li10GeP2S12",
+    "Li9.54Si1.74P1.44S11.7Cl0.3",
+    "Li3Y3Te2O12",#Garnets
+    "Li3Y3W2O12",
+    "Li5La3Nb2O12",
+    "Li5La3Ta2O12",
+    "Li6BaLa2Ta2O12",
+    "Li6SrLa2Ta2O12",
+    "Li7La3Zr2O12",#LLZOGarnet
+    "Li6.75La3(Zr1.75Nb0.25)O12",
+    "Li7.06La3Y0.06Zr1.94O12",
+    "Li6.4Ga0.2La3Zr2O12",
+    "Li6.20Ga0.30La2.95Rb0.05Zr2O12",
+    "Li0.34La0.51TiO2.94",#Perovskites
+    "Li0.35La0.55TiO3",
+    "LiSr1.65Zr1.3Ta1.7O9",
+    "Li0.375Sr0.4375Ta0.75Zr0.25O3",
+    "LiSr1.65Zr1.3Ta1.7O9",
+    "Li0.375Sr0.4375Ta0.75Hf0.25O3",
+    "Li3OCl", #antiperovskites
+    "Li3OCl0.5Br0.5"]
+
+for i, compound in enumerate(test_crystals):
+    # compound = "Li1.3Al0.3Ge1.7(PO4)3" # Just for quick tests, comment out
+    print(compound)
     comp = ChemHammer(compound)
     tested_results = []
 
     for x in result:
         try:
-            tested_results.append((comp.levenshtein_dist(x[0]), x[1]))
+            tested_results.append((x[0], comp.levenshtein_dist(x[0]), x[1]))
 
         except:
             pass
 
     # sort on similarity score
-    sorted_result = sorted(tested_results, key = lambda x : x[0])
+    sorted_result = sorted(tested_results, key = lambda x : x[1])
     top_ten = sorted_result[:10]
     string_to_write = f"For compound {compound} the top ten closest matches are:\n"
-
+    print(top_ten)
     # Add each of the closest matches
     for j, icsd_code in enumerate(top_ten):
         cursor.execute(f'select formula from data where icsd_code like "%{icsd_code[1]}%"')
@@ -89,32 +118,4 @@ for i, compound in enumerate(my_compounds):
         string_to_write += print_string + "\n"
 
     strings.append(string_to_write)
-
-# Once each process has tested theirs send back to root and write to file
-sendcounts = np.array(comm.gather(len(strings), root))
-
-if rank == root:
-    stringbuf = np.empty(sum(sendcounts), dtype=int)
-    indexbuf = np.empty(sum(sendcounts), dtype=int)
-else:
-    stringbuf = None
-    indexbuf = None
-
-comm.Gatherv(sendbuf=strings, recvbuf=(stringbuf, sendcounts), root=root)
-comm.Gatherv(sendbuf=my_splits, recvbuf=(indexbuf, sendcounts), root=root)
-
-print("Got to this bit!")
-print(len(my_splits))
-
-# Append to dataframe and save excel
-db.loc[i, 'Potential ICSD'] = string_to_write
-
-if i % 5 == 0:
-    print(f"{i/len(db) * 100}% complete")
-
-writer = ExcelWriter('PythonExport.xlsx')
-db.to_excel(writer, 'Sheet1')
-writer.save()
-
-print(f"Time taken: {time_start - time()}")
 

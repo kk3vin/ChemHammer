@@ -57,9 +57,9 @@ formula_list = ["Na0.99Zr2P3O12",     # Some NASICONs first repeated to ensure =
 
 lev_dist = []
 
-for i in range(len(formula_list)):
+for i in range(len(formula_list[:-1])):
     x = ChemHammer(formula_list[i], metric="manhattan")
-    for j in range(i, len(formula_list)):
+    for j in range(i+1, len(formula_list)):
         lev_dist.append(x.levenshtein_dist(formula_list[j]))
 
 lev_dist = squareform(lev_dist)
@@ -67,15 +67,14 @@ lev_dist = squareform(lev_dist)
 plt.subplot(131, aspect='equal')
 plt.imshow(lev_dist, cmap='binary')
 
-
 # Now lets shuffle the list and repeat the same as above to show disorder
 shuff_lev_dist = []
 shuff_list = deepcopy(formula_list)
 shuffle(shuff_list)
 
-for i in range(len(shuff_list)):
+for i in range(len(shuff_list) - 1):
     x = ChemHammer(shuff_list[i], metric="manhattan")
-    for j in range(i, len(formula_list)):
+    for j in range(i + 1, len(formula_list)):
         shuff_lev_dist.append(x.levenshtein_dist(shuff_list[j]))
 
 shuff_lev_dist = squareform(shuff_lev_dist)
@@ -85,6 +84,7 @@ plt.imshow(shuff_lev_dist, cmap='binary')
 
 # "ward", "single", "average", "complete"
 # Now lets resort the list and see how this comes out
+
 sorted_mat_ward = DistanceMatrixSorter(lev_dist, method="ward")
 sorted_mat_sing = DistanceMatrixSorter(lev_dist, method="single")
 sorted_mat_ave = DistanceMatrixSorter(lev_dist, method="average")
