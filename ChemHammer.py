@@ -25,6 +25,7 @@ import urllib.request
 from copy import deepcopy
 from collections import Counter, OrderedDict
 from math import sqrt
+from functools import partial
 
 import numpy as np
 
@@ -37,20 +38,24 @@ from ortools.graph import pywrapgraph
 # from MinFlowFinder import MinFlowFinder
 
 def main():
-    test_str = "Li7La3Zr2O12"
+    test_str = "LiZr1.8Hf0.2P3O12"
+
+    x = ChemHammer("LiZr2P3O12", metric="mod_petti", verbose=True)
+    print(f"Verbose Minimum Flow is: {x.min_flow_dist(test_str)}")
 
     x = ChemHammer("LiZr2P3O12", metric="mod_petti")
     y = ChemHammer(test_str)
-
-    print(f"Flow distance is: {x.min_flow_dist(y)}")
 
     print(f"Test composition is {y.composition}")
     print(f"Composition is {x.composition}")
     print(f"Normalised Test Composition is {y.normed_composition}")
     print(f"Normalised Composition is {x.normed_composition}")
-    print(f"Euclidean Distance is {x.euclidean_dist(test_str)}")
-    print(f"Hamming Distance is {x.hamming_dist(test_str)}")
-    print(f"Levenshtein Distance is {x.levenshtein_dist((test_str))}")
+    print()
+    
+    print(f"Minimum Flow Distance is: {x.min_flow_dist(test_str)}")
+    print(f"Euclidean Distance is: {x.euclidean_dist(test_str)}")
+    print(f"Hamming Distance is: {x.hamming_dist(test_str)}")
+    print(f"Levenshtein Distance is: {x.levenshtein_dist((test_str))}")
 
 class ChemHammer():
     ATOM_REGEX = '([A-Z][a-z]*)(\d*\.*\d*)'
@@ -68,12 +73,13 @@ class ChemHammer():
     # How much the addition of a new element affects the distance metric
     LEVENSH_MOD = 0.1
 
-    def __init__(self, formula, metric="mod_petti"):
+    def __init__(self, formula, metric="mod_petti", verbose=False):
         self.formula = formula.replace(" ", "")
         self.periodic_tab = self._get_periodic_tab()
         self.composition = self._parse_formula(self.formula)
         self.normed_composition = self._normalise_composition(self.composition)
         self.distance_metric = metric
+        self.verbose = verbose
     
     def euclidean_dist(self, comp2, comp1 = None):
         """
@@ -182,7 +188,7 @@ class ChemHammer():
         start_nodes, end_nodes, labels, capacities, costs, supplies = self._generate_parameters(comp1, comp2)
 
         # Google colab only takes integer values, so we will multiply our floats 
-        # by self.FP_MULTIPLIER and cast
+        # by self.FP_MULTIPLIER and cast to int
         capacities = [int(x * self.FP_MULTIPLIER) for x in capacities]
         supplies = [int(x * self.FP_MULTIPLIER) for x in supplies]
 
@@ -212,7 +218,10 @@ class ChemHammer():
         for i in range(0, len(supplies)):
             min_cost_flow.SetNodeSupply(i, supplies[i])
 
-        if min_cost_flow.Solve() == min_cost_flow.OPTIMAL:
+        feasibility_status = min_cost_flow.Solve()
+
+        if feasibility_status == min_cost_flow.OPTIMAL and self.verbose:
+
             print('Distance Score:', min_cost_flow.OptimalCost() / self.FP_MULTIPLIER)
             print('')
             print('  Arc    Flow / Capacity  Cost')
@@ -425,7 +434,8 @@ class ChemHammer():
         comp2_elements = list(comp2.keys())
         elements = comp1_elements + comp2_elements
 
-        coords = list(map(self._get_position, elements))
+        kw_func = partial(self._get_position, metric="manhattan")
+        coords = list(map(kw_func, elements))
 
         if len(comp1) > 0 and len(comp2) > 0:
             dist_matrix = np.array(squareform(pdist(coords, metric="cityblock")))
