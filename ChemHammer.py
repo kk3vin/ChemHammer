@@ -1,16 +1,29 @@
 """
-A class to compute a normalised vector of atomic counts and calculate the
-Hamming/Damerau-Levenshtein distance to another chemical composition.
+A class to compute the atomic similarity between two structural compounds based
+on the minimal cost flow between these. 
 
-Author: Cameron Hargreaves
+Copyright (C) 2019  Cameron Hargreaves
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>
+
+--------------------------------------------------------------------------------
 
 Python Parser Source: https://github.com/Zapaan/python-chemical-formula-parser
 
 Periodic table JSON data: https://github.com/Bowserinator/Periodic-Table-JSON,
 updated to include the Pettifor number and modified Pettifor number from
 https://iopscience.iop.org/article/10.1088/1367-2630/18/9/093011
-
-TODO: Refine the hamming and levenshtein weighting hyperparameters
 
 """
 
@@ -38,31 +51,37 @@ from ortools.graph import pywrapgraph
 # from MinFlowFinder import MinFlowFinder
 
 def main():
-    test_str = "LiZr1.8Hf0.2P3O12"
+    test_str = "NaCl0.5Br0.5"
+    test_str2 = "MgCl0.5Br0.5"
 
-    x = ChemHammer("LiZr2P3O12", metric="mod_petti", verbose=True)
-    print(f"Verbose Minimum Flow is: {x.min_flow_dist(test_str)}")
+    x = ChemHammer("NaCl", verbose=True)
+    y = ChemHammer("NaCl0.5Br0.5", verbose=True)
+    z = ChemHammer("KCl0.5Br0.5", verbose=True)
 
-    x = ChemHammer("LiZr2P3O12", metric="mod_petti")
-    y = ChemHammer(test_str)
+    print(f"Verbose Minimum Flow is: {x.min_flow_dist(y)}")
+    print(f"Verbose Minimum Flow is: {y.min_flow_dist(z)}")
+    print(f"Verbose Minimum Flow is: {x.min_flow_dist(z)}")
 
-    print(f"Test composition is {y.composition}")
-    print(f"Composition is {x.composition}")
-    print(f"Normalised Test Composition is {y.normed_composition}")
-    print(f"Normalised Composition is {x.normed_composition}")
-    print()
-    
-    print(f"Minimum Flow Distance is: {x.min_flow_dist(test_str)}")
-    print(f"Euclidean Distance is: {x.euclidean_dist(test_str)}")
-    print(f"Hamming Distance is: {x.hamming_dist(test_str)}")
-    print(f"Levenshtein Distance is: {x.levenshtein_dist((test_str))}")
+    # print(f"Test composition is {y.composition}")
+    # print(f"Composition is {x.composition}")
+    # print(f"Normalised Test Composition is {y.normed_composition}")
+    # print(f"Normalised Composition is {x.normed_composition}")
+    # print()
+
+    # print(f"Minimum Flow Distance is: {x.min_flow_dist(test_str)}") 
+
+
+
+    # print(f"Euclidean Distance is: {x.euclidean_dist(test_str)}")
+    # print(f"Hamming Distance is: {x.hamming_dist(test_str)}")
+    # print(f"Levenshtein Distance is: {x.levenshtein_dist((test_str))}")
 
 class ChemHammer():
     ATOM_REGEX = '([A-Z][a-z]*)(\d*\.*\d*)'
     OPENERS = '({['
     CLOSERS = ')}]'
 
-    # As the current optimization solver only takes in ints we must multiply 
+    # As the current optimization solver only takes in ints we must multiply
     # all floats to capture the decimal places
     FP_MULTIPLIER = 100000
 
@@ -80,7 +99,103 @@ class ChemHammer():
         self.normed_composition = self._normalise_composition(self.composition)
         self.distance_metric = metric
         self.verbose = verbose
-    
+
+    def min_flow_dist(self, comp2, comp1 = None):
+        comp1 = comp1 if comp1 is not None else self.normed_composition
+
+        if isinstance(comp2, str):
+            comp2 = self._parse_formula(comp2)
+            comp2 = self._normalise_composition(comp2)
+
+        if isinstance(comp2, ChemHammer):
+            comp2 = comp2.normed_composition
+
+        start_nodes, end_nodes, labels, capacities, costs, supplies = self._generate_parameters(comp1, comp2)
+
+        # Google OR-tools only take integer values, so we multiply our floats
+        # by self.FP_MULTIPLIER and cast to int
+        capacities = [int(x * self.FP_MULTIPLIER) for x in capacities]
+        supplies = [int(x * self.FP_MULTIPLIER) for x in supplies]
+
+        # Due to rounding errors, the two supplies may no longer be equal to one
+        # another. We add the difference to the largest value in the smaller set
+        # to allow this to process and keep the error minimised
+        source_tot = sum([x for x in supplies if x > 0])
+        sink_tot = -sum([x for x in supplies if x < 0])
+
+        while sink_tot < source_tot:
+            supplies[supplies.index(min(supplies))] -= 1
+            sink_tot = -sum([x for x in supplies if x < 0])
+
+        while source_tot < sink_tot:
+            supplies[supplies.index(max(supplies))] += 1
+            source_tot = sum([x for x in supplies if x > 0])
+
+        # Instantiate a SimpleMinCostFlow solver
+        min_cost_flow = pywrapgraph.SimpleMinCostFlow()
+
+        # Add each arc.
+        for i in range(0, len(start_nodes)):
+            min_cost_flow.AddArcWithCapacityAndUnitCost(start_nodes[i], end_nodes[i],
+                                                        capacities[i], costs[i])
+
+        # Add node supplies.
+        for i in range(0, len(supplies)):
+            min_cost_flow.SetNodeSupply(i, supplies[i])
+
+        feasibility_status = min_cost_flow.Solve()
+
+        if feasibility_status == min_cost_flow.OPTIMAL:
+            dist = min_cost_flow.OptimalCost() / self.FP_MULTIPLIER
+
+            if self.verbose:
+                print('  Arc    Flow / Capacity  Cost')
+                for i in range(min_cost_flow.NumArcs()):
+                    cost = min_cost_flow.Flow(i) * min_cost_flow.UnitCost(i)
+                    print('%s -> %1s, %3s  / %3s       %3s' % (
+                        #min_cost_flow.Tail(i),
+                        labels[min_cost_flow.Tail(i)].split('_')[0],
+                        #min_cost_flow.Head(i),
+                        labels[min_cost_flow.Head(i)].split('_')[0],
+                        min_cost_flow.Flow(i) ,
+                        min_cost_flow.Capacity(i) ,
+                        cost ))
+                print(f"Distance Score: {min_cost_flow.OptimalCost() / self.FP_MULTIPLIER}\n")
+            return dist
+
+        else:
+            return "Infeasible solution"
+
+    def _generate_parameters(self, source, sink):
+        start_nodes = []
+        start_labels = []
+        end_nodes = []
+        end_labels = []
+
+        capacities = []
+        costs = []
+        supply_tracker = OrderedDict()
+
+        for i, key_value_source in enumerate(source.items()):
+            for j, key_value_sink in enumerate(sink.items()):
+                start_nodes.append(i)
+                start_labels.append(key_value_source[0])
+                end_nodes.append(j + len(source))
+                end_labels.append(key_value_sink[0])
+                capacities.append(min(key_value_source[1], key_value_sink[1]))
+                costs.append(abs(self._get_position(key_value_source[0]) - self._get_position(key_value_sink[0])))
+
+        for lab in start_labels:
+            supply_tracker[lab + "_source"] = source[lab]
+
+        for lab in end_labels:
+            supply_tracker[lab + "_sink"] = -sink[lab]
+
+        labels = list(supply_tracker.keys())
+        supplies = list(supply_tracker.values())
+
+        return start_nodes, end_nodes, labels, capacities, costs, supplies
+
     def euclidean_dist(self, comp2, comp1 = None):
         """
         Simply take the euclidean distance between two vectors excluding atom
@@ -174,100 +289,6 @@ class ChemHammer():
                 dist += distribution * self.LEVENSH_MOD
 
         return dist
-
-    def min_flow_dist(self, comp2, comp1 = None):
-        comp1 = comp1 if comp1 is not None else self.normed_composition
-
-        if isinstance(comp2, str):
-            comp2 = self._parse_formula(comp2)
-            comp2 = self._normalise_composition(comp2)
-
-        if isinstance(comp2, ChemHammer):
-            comp2 = comp2.normed_composition
-
-        start_nodes, end_nodes, labels, capacities, costs, supplies = self._generate_parameters(comp1, comp2)
-
-        # Google colab only takes integer values, so we will multiply our floats 
-        # by self.FP_MULTIPLIER and cast to int
-        capacities = [int(x * self.FP_MULTIPLIER) for x in capacities]
-        supplies = [int(x * self.FP_MULTIPLIER) for x in supplies]
-
-        # Due to rounding errors, the two supplies may no longer be equal to one
-        # another. We add the difference to the largest value in the smaller set
-        # to allow this to process and keep the error minimised
-        source_tot = sum([x for x in supplies if x > 0])
-        sink_tot = -sum([x for x in supplies if x < 0])
-
-        while sink_tot < source_tot:
-            supplies[supplies.index(min(supplies))] -= 1
-            sink_tot = -sum([x for x in supplies if x < 0])
-
-        while source_tot < sink_tot:
-            supplies[supplies.index(max(supplies))] += 1
-            source_tot = sum([x for x in supplies if x > 0])
-
-        # Instantiate a SimpleMinCostFlow solver.
-        min_cost_flow = pywrapgraph.SimpleMinCostFlow()
-
-        # Add each arc.
-        for i in range(0, len(start_nodes)):
-            min_cost_flow.AddArcWithCapacityAndUnitCost(start_nodes[i], end_nodes[i],
-                                                        capacities[i], costs[i])
-
-        # Add node supplies.
-        for i in range(0, len(supplies)):
-            min_cost_flow.SetNodeSupply(i, supplies[i])
-
-        feasibility_status = min_cost_flow.Solve()
-
-        if feasibility_status == min_cost_flow.OPTIMAL and self.verbose:
-
-            print('Distance Score:', min_cost_flow.OptimalCost() / self.FP_MULTIPLIER)
-            print('')
-            print('  Arc    Flow / Capacity  Cost')
-            for i in range(min_cost_flow.NumArcs()):
-                cost = min_cost_flow.Flow(i) * min_cost_flow.UnitCost(i)
-                print('%s -> %1s, %3s  / %3s       %3s' % (
-                    #min_cost_flow.Tail(i),
-                    labels[min_cost_flow.Tail(i)].split('_')[0],
-                    #min_cost_flow.Head(i),
-                    labels[min_cost_flow.Head(i)].split('_')[0],
-                    min_cost_flow.Flow(i) ,
-                    min_cost_flow.Capacity(i) ,
-                    cost ))
-            print()
-
-        dist = min_cost_flow.OptimalCost() / self.FP_MULTIPLIER
-        return dist
-
-    def _generate_parameters(self, source, sink):
-        start_nodes = []
-        start_labels = []
-        end_nodes = []
-        end_labels = []
-
-        capacities = [] 
-        costs = [] 
-        supply_tracker = OrderedDict()
-
-        for i, key_value_source in enumerate(source.items()):
-            for j, key_value_sink in enumerate(sink.items()):
-                start_nodes.append(i)
-                start_labels.append(key_value_source[0])
-                end_nodes.append(j + len(source))
-                end_labels.append(key_value_sink[0])
-                capacities.append(min(key_value_source[1], key_value_sink[1]))
-                costs.append(abs(self._get_position(key_value_source[0]) - self._get_position(key_value_sink[0])))
-
-        for lab in start_labels:
-            supply_tracker[lab + "_source"] = source[lab]
-        
-        for lab in end_labels:
-            supply_tracker[lab + "_sink"] = -sink[lab]
-        
-        labels = list(supply_tracker.keys())
-        supplies = list(supply_tracker.values())
-        return start_nodes, end_nodes, labels, capacities, costs, supplies
 
     def _get_periodic_tab(self):
         """
@@ -394,7 +415,7 @@ class ChemHammer():
 
         elif metric == "petti":
             return atom_info['petti_num']
-        
+
         elif metric == "manhattan":
             return (atom_info['xpos'], atom_info['ypos'])
 
