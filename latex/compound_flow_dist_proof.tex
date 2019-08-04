@@ -1,0 +1,203 @@
+% ===============================================
+% MATH 34: Multivariable calculus           Spring 2019
+% hw_template.tex
+% ===============================================
+
+% -------------------------------------------------------------------------
+% You can ignore this preamble. Go on
+% down to the section that says "START HERE"
+% -------------------------------------------------------------------------
+
+\documentclass{article}
+
+\usepackage[margin=1.5in]{geometry} % Please keep the margins at 1.5 so that there is space for grader comments.
+\usepackage{amsmath,amsthm,amssymb,hyperref}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+
+\newcommand{\R}{\mathbf{R}}
+\newcommand{\Z}{\mathbf{Z}}
+\newcommand{\N}{\mathbf{N}}
+\newcommand{\Q}{\mathbf{Q}}
+\newcommand{\norm}[1]{\lVert#1\rVert_2}
+
+\newenvironment{theorem}[2][Theorem]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{lemma}[2][Lemma]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{claim}[2][Claim]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{problem}[2][Problem]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{proposition}[2][Proposition]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+\newenvironment{corollary}[2][Corollary]{\begin{trivlist}
+\item[\hskip \labelsep {\bfseries #1}\hskip \labelsep {\bfseries #2.}]}{\end{trivlist}}
+
+\newenvironment{solution}{\begin{proof}[Solution]}{\end{proof}}
+
+\begin{document}
+
+\large % please keep the text at this size for ease of reading.
+
+% ------------------------------------------ %
+%                 START HERE             %
+% ------------------------------------------ %
+
+{\Large % Replace with appropriate page number
+\hfill  Atomic Formula Similarity, Proof as a Distance Metric}
+
+\begin{center}
+{\Large Cameron Hargreaves} % Replace "Author's Name" with your name
+\end{center}
+\vspace{0.05in}
+
+\section{Definition}
+One invariant of a stable crystalline solid is the ratio of specific elements within the compound. This is given by the atomic formula of the unit cell, and whilst the number of atoms in an ideal compound will vary by weight, their ratios will not.
+
+Using this we can construct a disconnected labelled graph for a compound, with a vertex for each of the unique elements, with the associated label being that elements atomic identifier, and associated ratio in the compound. For a given a compound, $C$, from the set of feasible compounds, $FC$, containing ratios of unique elements, $e$:
+
+$$\forall\ C \in FC\ \exists\ G(V,\ \emptyset)\ \mid \ |V|\ =\ |e|,\ V_i \leftarrow e_i $$
+
+$$\sum_{i} e_i = 1$$
+
+In doing this we can construct a set $X$ containing all possible inorganic compounds, and a function to give a metric between these, $d$, such that:
+
+$$d: X \times X \rightarrow\ \mathbb{R}$$
+
+And for all $x, y \in X$, $d(x, y)$ gives a similarity metric between their respective elemental compositions. \\
+
+This will satisfy the four axioms of a metric space, $\mathcal{M}$, iff:
+
+\begin{enumerate}
+   \item $\forall\ x,\ y\ \in X,\ d(x, y)\ \geq\ 0$  (Non-Negativity)
+   \item $\forall\ x,\ y\ \in X,\ d(x, y) = 0, \Leftrightarrow x = y$ (Identity of Indiscernibles)
+   \item $\forall\ x,\ y\ \in X,\ d(x, y) = d(y, x)$ (Symmetry)
+   \item $\forall\ x,\ y,\ z \in X,\ d(x, z) \leq d(x, y) + d(y, z)$ (Triangular Inequality)
+\end{enumerate}
+
+We will first define $d$ and then provide proofs that it satisfies the above four properties.
+
+\section{Construction of the Distance Metric}
+We can construct a compositional similarity metric by taking two sets of vertices, $V$ and $W$ from $FC$. These two sets of labelled vertices form a bipartite set, from which we can construct a weighted, labelled, complete bipartite graph such that an edge connects every vertex, $v$, in $V$ to every vertex, $w$ in $W$.
+
+From here we use a standard combinatorial optimization algorithm to find the minimal cost, multi-commodity flow between these two sets. This is well described in other medium and will not be covered in depth here, however a good summary is given by \cite{GoogFlowSummary}.
+
+There are multiple analogies to ease the thought process, most usually thought of as a set of fluid sources (elements in our first compound) each with an associated supply in proportion to their related ratio in the compound. We fully connect edges (pipes) to a set of fluid sinks (elements in our second compound), each with their own demand. There is an associated cost for the fluid to travel from a source to a sink via an edge, and additionally an associated capacity of each edge for the maximum quantity of fluid to travel through it.
+
+\begin{alignat*}{2}
+   &\text{For a directed graph}, G = (V, E) &\qquad & v,\ w \in V \text{ and } (v,\ w) \in E \\
+   &\text{With non-negative edge capacities} &   & u_i,\ \forall\ e_i \in E \\
+   &\text{An associated edge cost} &   & c_i,\ \forall\ e_i \in E \\
+   &\text{And a supply/demand of each vertex} &   & b_i,\ \forall\ v_i \in V \\
+\end{alignat*}
+
+We wish to find the minimal cost for fluid to travel from the sources to the sinks (\ref{eq:optProb}) via the available edges, such that we do not exceed the edge capacity (\ref{eq:constraint1}), the total supply/demand is fulfilled for each vertex (\ref{eq:constraint2}), and we do not allow there to be a negative direction of fluid flow from sink to source (\ref{eq:constraint3}).
+
+\begin{subequations}
+   \begin{alignat}{2}
+   &\!\min\ &\qquad& \sum_{(v, w)\in E} c(v,\ w)f(v,\ w)\label{eq:optProb}\\
+   &\text{subject to} & & f(v, w) \leq u(v, w)\ \forall\ (v, w) \in E \label{eq:constraint1}\\
+   &                  &      & \sum_{w \in V} f(v, w) = b(v)\ \forall\rightarrow v \in V \label{eq:constraint2} \\
+   &                  &      & f(v, w) \geq 0\label{eq:constraint3}
+   \end{alignat}
+\end{subequations}
+
+In our set of elemental compositions, the directed graph is formed between the vertices of one elemental ratio to the vertices of a second elemental ratio, the associated capacity for an edge is simply the smallest ratio of its' two associated labelled vertices, its' cost is the Pettifor distance between the two elements of the associated label, and the supply/demand of each vertex is its' associated ratio.
+
+In this way we have given a reasonable measure of the similarity between two compounds which perfectly matches each of the atoms to an associated atom, but requires a justified cost metric between elements. The Pettifor scale was devised in 1984 \cite{PETTIFOR198431} and further developed in 2016 \cite{Glawe_2016} to create a 1-Dimensional periodic table, with each element having neighbouring elements that it's most similar to. This elemental similarity is calculated via the statistical analysis of the likelihood that it can be substituted by another within the compounds of the ICSD.
+
+This gives us an ordered set in $\mathbb{Z}^1$ of size 112 with each element mapped to a chemical element in the ICSD. We use standard euclidean distance on this set as the cost in our optimization problem, forcing our solver to try and connect the greatest amount of an element to its' most similar element in the matching compound.
+
+This flow problem is then solved using the Google OR-Tools \cite{GoogOrTool} implementation of the Goldberg-Tarjan minimum-cost flow algorithm \cite{Bünnagel_efficientimplementation}, which runs in $O(n^2) + O(n^2m)$ where $n$ is $|V|$ and $m$ is $|E|$. This algorithm is modified slightly to account for conversions of floating point numbers to integers, leading to an additional error of at most $\pm 1 \times 10^{-7}$.
+
+The resultant cost can be used as a similarity metric between the two compositions.
+
+% -----------------------------------------------------
+% ------------- Proofs
+% -----------------------------------------------------
+
+
+\section{Proof}
+\subsection{Non-Negativity}
+$$\forall\ x,\ y\ \in X,\ d(x, y)\ \geq\ 0$$
+
+This is trivially shown for Equation \ref{eq:optProb} as all values of $c(v,\ w) \geq 0$ as $d(x, y) \geq 0$ on the Pettifor scale and from constraint \ref{eq:constraint3}, $f(v, w) \geq 0$, therefore, $\sum c(v,\ w)f(v,\ w) \geq 0$
+
+\subsection{Indiscernibles}
+$$\forall\ x,\ y\ \in X,\ d(x, y) = 0, \Leftrightarrow x = y$$
+
+From the construction of the directed graph, when we have matching labelled vertices in the bijective sets, there is a guaranteed edge of cost 0 with sufficient capacity for each pair of matching vertices, giving a resultant cost of 0.
+
+\subsection{Symmetry}
+$$\forall\ x,\ y\ \in X,\ d(x, y) = d(y, x)$$
+
+In the construction of the directed graphs, these are symmetric in their vertices and edges, therefore the resultant minimal cost of each will be equal in each case.
+
+\subsection{Triangular Inequality}
+$$\forall\ x,\ y,\ z \in X,\ d(x, z) \leq d(x, y) + d(y, z)$$
+
+Take three elements $x$, $y$, and $z \in X$ and construct three associated costs, $\alpha = d(x,\ y),\ \beta = d(y,\ z)$, and $\gamma = d(x,\ z)$. We assume that these edges are ordered by cost such that $\alpha < \beta < \gamma$.
+
+Via proof by contradiction, by breaking axiom one, assume that one of the costs, $\alpha < 0$. From the hypothesis $\alpha + \beta \geq \gamma$, we can clarify $\alpha$'s negativity by writing,  $\beta - \alpha \geq \gamma$, assuming $\beta, \gamma \geq 0$.
+
+It is trivial to show that $\gamma \geq \gamma - \alpha$ for all values of $\gamma$, therefore our initial inequality can be rewritten as $\beta - \alpha \geq \gamma \geq \gamma - \alpha$. From our initial definition that $\beta \leq \gamma$, and this inequality stating $\beta \geq \gamma$, $\beta$ must equal $\gamma$.
+
+In the case that $\beta = \gamma$, we can take the original triangle inequality, $\alpha + \beta \geq \gamma$, and substitute in $\gamma$ to give, $\alpha + \gamma \geq \gamma$, which simplifies to $\alpha \geq 0$ which is in direct contradiction to our initial assumption.
+
+This proof can be carried forward for the cases of two of the costs being assumed negative, and all three of the costs being assumed negative. This shows that this set must follow the triangle inequality for all feasible compounds, and again proves the first axiom.
+
+\section{Examples}
+
+\begin{figure}[h!]
+   \centering
+   \begin{tikzpicture}[
+      mycircle/.style={
+         circle,
+         draw=black,
+         fill=gray,
+         fill opacity = 0.3,
+         text opacity=1,
+         inner sep=0pt,
+         minimum size=20pt,
+         font=\small},
+      myarrow/.style={-Stealth},
+      node distance=0.6cm and 1.2cm
+      ]
+      \node[mycircle] (c4) {$Na$};
+      \node[right = of c4] (c4_lab) {0.5}
+      \node[mycircle, below left=of c4] (c1) {$Na$};
+
+      \node[mycircle,below right=of c1] (c5) {$Cl$};
+      \node[mycircle,below left=of c5] (c2) {$Cl$};
+      \node[mycircle,below right=of c2] (c6) {$Br$};
+
+   \foreach \i/\j/\txt/\p in {% start node/end node/text/position
+      c1/c4//below,
+      c1/c5//above,
+      c1/c6//below,
+      c2/c4//below,
+      c2/c5//above,
+      c2/c6//above}
+      \draw [myarrow] (\i) -- node[sloped,font=\small,\p] {\txt} (\j);
+
+
+
+
+   % draw this outside loop to get proper orientation of 10
+   %\draw [myarrow] (c4.250) -- node[sloped,font=\small,above,rotate=180] {10} (c2.110);
+   \end{tikzpicture}
+\end{figure}
+
+\bibliographystyle{unsrt}
+\bibliography{compound_flow_dist_proof}
+
+% -----------------------------------------------------
+
+
+% ---------------------------------------------------
+% Anything after the \end{document} will be ignored by the typesetting.
+% ----------------------------------------------------
+
+\end{document}
